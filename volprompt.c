@@ -1,4 +1,7 @@
-// volprompt.c
+// volprompt.c - OnePlus 15 (infiniti) volume prompt for recovery
+// Volume Up   -> exit(0)  (YES)
+// Volume Down -> exit(1)  (NO)
+
 #include <fcntl.h>
 #include <unistd.h>
 #include <linux/input.h>
@@ -8,12 +11,12 @@
 
 #define NUM_DEVS    2
 static const char *devices[NUM_DEVS] = {
-    "/dev/input/event2",  // where KEY_VOLUMEUP appears
-    "/dev/input/event0"   // where KEY_VOLUMEDOWN appears
+    "/dev/input/event1",  // pmic_resin  -> KEY_VOLUMEUP
+    "/dev/input/event2"   // gpio-keys   -> KEY_VOLUMEDOWN
 };
 
-#define KEY_VOLUP    115
-#define KEY_VOLDOWN  114
+#define KEY_VOLUP    115   // KEY_VOLUMEUP
+#define KEY_VOLDOWN  114   // KEY_VOLUMEDOWN
 
 int main(void) {
     struct pollfd fds[NUM_DEVS];
@@ -29,6 +32,7 @@ int main(void) {
         }
         fds[i].fd = fd;
         fds[i].events = POLLIN;
+        fds[i].revents = 0;
     }
 
     // prompt (prints to recovery console)
@@ -41,24 +45,28 @@ int main(void) {
             perror("poll");
             return 3;
         }
+
         for (i = 0; i < NUM_DEVS; i++) {
-            if (fds[i].revents & POLLIN) {
-                if (read(fds[i].fd, &ev, sizeof(ev)) != sizeof(ev)) {
-                    perror("read");
-                    return 4;
+            if (!(fds[i].revents & POLLIN))
+                continue;
+
+            if (read(fds[i].fd, &ev, sizeof(ev)) != (ssize_t)sizeof(ev)) {
+                perror("read");
+                return 4;
+            }
+
+            if (ev.type == EV_KEY && ev.value == 1) { // 1 = key press
+                if (ev.code == KEY_VOLUP) {
+                    printf("Detected Volume-Up → YES\n");
+                    return 0;  // YES
                 }
-                if (ev.type == EV_KEY && ev.value == 1) {
-                    if (ev.code == KEY_VOLUP) {
-                        printf("Detected Volume-Up → YES\n");
-                        return 0;  // YES
-                    }
-                    if (ev.code == KEY_VOLDOWN) {
-                        printf("Detected Volume-Down → NO\n");
-                        return 1;  // NO
-                    }
+                if (ev.code == KEY_VOLDOWN) {
+                    printf("Detected Volume-Down → NO\n");
+                    return 1;  // NO
                 }
             }
         }
     }
-    return 0;
+
+    return 1; // fallback = NO
 }
